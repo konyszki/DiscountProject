@@ -1,0 +1,31 @@
+# Pliki bin i obj, które są generowane podczas kompilacji
+bin/
+obj/
+
+# Pliki konfiguracyjne IDE
+.vs/
+.vscode/
+.idea/
+
+# Pliki tymczasowe i logi
+*.log
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Pliki zależności NuGet (zwykle zarządzane przez .NET CLI)
+packages/
+# Ignorowanie folderu z zależnościami globalnymi
+global.json
+
+# Pliki wygenerowane przez dotnet restore
+project.lock.json
+project.fragment.lock.json
+
+# Pliki generowane przez Visual Studio
+*.dbmdl
+*.bak
+*.Backup
+*.log
+*.dmp
