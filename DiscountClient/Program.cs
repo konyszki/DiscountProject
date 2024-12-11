@@ -26,19 +26,15 @@ internal class WebSocketClient
             await client.ConnectAsync(serverUri, CancellationToken.None);
             Console.WriteLine("Connected to the server.");
 
-            // Send multiple requests sequentially (you can also run multiple clients for parallelism)
-            for (int i = 0; i < 3; i++) // Example: send 3 requests
-            {
-                int requestCount = 500; // Request 500 discount codes
-                DiscountRequest request = new DiscountRequest { Count = requestCount };
-                string requestJson = JsonSerializer.Serialize(request);
+            int requestCount = 500;
+            DiscountRequest request = new DiscountRequest { Count = requestCount };
+            string requestJson = JsonSerializer.Serialize(request);
 
-                byte[] requestBytes = Encoding.UTF8.GetBytes(requestJson);
-                await client.SendAsync(new ArraySegment<byte>(requestBytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                Console.WriteLine($"Requested {requestCount} discount codes.");
+            byte[] requestBytes = Encoding.UTF8.GetBytes(requestJson);
+            await client.SendAsync(new ArraySegment<byte>(requestBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            Console.WriteLine($"Requested {requestCount} discount codes.");
 
-                await ReceiveMessages(client);
-            }
+            await ReceiveMessages(client);
 
             await client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Client closing", CancellationToken.None);
             Console.WriteLine("Client disconnected.");
@@ -57,7 +53,7 @@ internal class WebSocketClient
         Console.WriteLine($"Received {response.Codes.Count} discount codes:");
         foreach (string code in response.Codes)
         {
-            Console.WriteLine(code);
+            Console.WriteLine($"{code} Length:{code.Length}");
         }
     }
 }
