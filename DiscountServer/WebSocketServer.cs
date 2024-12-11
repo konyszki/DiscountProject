@@ -69,7 +69,7 @@ namespace DiscountServer
                 }
                 catch (Exception)
                 {
-                    break; // Jeśli wystąpi błąd, zamykamy połączenie
+                    break;
                 }
 
                 if (result.MessageType == WebSocketMessageType.Close)
