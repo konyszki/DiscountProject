@@ -10,7 +10,7 @@ namespace DiscountServerTests.Unit
         {
             // Arrange
             var fileStorage = Substitute.For<IFileDiscountStorage>();
-            fileStorage.ReadDiscountCodesFromFileAsync().Returns(new List<string>()); // Brak istniej¹cych kodów
+            fileStorage.ReadDiscountCodesFromFileAsync().Returns(new List<string>());
 
             var generator = new DiscountCodeGenerator(fileStorage);
 
@@ -19,7 +19,7 @@ namespace DiscountServerTests.Unit
 
             // Assert
             Assert.Equal(100, codes.Count);
-            Assert.Equal(100, new HashSet<string>(codes).Count); // Unikalne kody
+            Assert.Equal(100, new HashSet<string>(codes).Count);
         }
 
         [Fact]
