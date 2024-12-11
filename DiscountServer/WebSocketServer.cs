@@ -1,44 +1,42 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Net;
 using System.Net.WebSockets;
-using System.Net;
 using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace DiscountServer
 {
     public interface IWebSocketServer
     {
-        Task StartAsync();
+        Task StartAsync(CancellationToken cancellationToken);
     }
 
     public class WebSocketServer : IWebSocketServer
     {
-        private readonly IDiscountStorage _discountStorage;
+        private readonly HttpListener _httpListener;
+        private readonly string _url;
+        private readonly IDiscountCodeGenerator _discountCodeGenerator;
+        private readonly IFileDiscountStorage _fileStorage;
 
-        public WebSocketServer(IDiscountStorage discountStorage)
+        public WebSocketServer(string url, IDiscountCodeGenerator discountCodeGenerator, IFileDiscountStorage fileStorage)
         {
-            _discountStorage = discountStorage;
+            _url = url;
+            _discountCodeGenerator = discountCodeGenerator;
+            _fileStorage = fileStorage;
+            _httpListener = new HttpListener();
+            _httpListener.Prefixes.Add(url);
         }
 
-        public async Task StartAsync()
+        public async Task StartAsync(CancellationToken cancellationToken)
         {
-            HttpListener httpListener = new HttpListener();
-            httpListener.Prefixes.Add("http://localhost:5000/ws/");
-            httpListener.Start();
-            Console.WriteLine("WebSocket server started at ws://localhost:5000/ws/");
+            _httpListener.Start();
+            Console.WriteLine($"Server started at {_url}");
 
-            while (true)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                HttpListenerContext context = await httpListener.GetContextAsync();
-
+                var context = await _httpListener.GetContextAsync();
                 if (context.Request.IsWebSocketRequest)
                 {
-                    HttpListenerWebSocketContext wsContext = await context.AcceptWebSocketAsync(null);
-                    Console.WriteLine("Client connected.");
-                    _ = Task.Run(() => HandleWebSocketConnection(wsContext.WebSocket));
+                    await HandleWebSocketConnectionAsync(context, cancellationToken);
                 }
                 else
                 {
@@ -48,80 +46,54 @@ namespace DiscountServer
             }
         }
 
-        private async Task HandleWebSocketConnection(WebSocket webSocket)
+        private async Task HandleWebSocketConnectionAsync(HttpListenerContext context, CancellationToken cancellationToken)
         {
-            byte[] buffer = new byte[1024];
+            var webSocketContext = await context.AcceptWebSocketAsync(null);
+            var webSocket = webSocketContext.WebSocket;
 
-            while (webSocket.State == WebSocketState.Open)
-            {
-                WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-                string jsonMessage = Encoding.UTF8.GetString(buffer, 0, result.Count);
-
-                Console.WriteLine($"Received JSON: {jsonMessage}");
-
-                // Deserialize request
-                DiscountRequest request = JsonSerializer.Deserialize<DiscountRequest>(jsonMessage);
-                int count = Math.Min(request?.Count ?? 0, 2000);
-
-                // Fetch or generate discount codes
-                var codes = FetchOrGenerateDiscountCodes(count).ToList();
-
-                // Serialize and send response
-                DiscountResponse response = new DiscountResponse { Codes = codes };
-                string responseJson = JsonSerializer.Serialize(response);
-                byte[] responseBytes = Encoding.UTF8.GetBytes(responseJson);
-
-                await webSocket.SendAsync(new ArraySegment<byte>(responseBytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                Console.WriteLine($"Sent {codes.Count} discount codes.");
-            }
-
-            Console.WriteLine("Client disconnected.");
-            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+            await ProcessClientRequestsAsync(webSocket, cancellationToken);
         }
 
-        internal IEnumerable<string> FetchOrGenerateDiscountCodes(int count)
+        private async Task ProcessClientRequestsAsync(WebSocket webSocket, CancellationToken cancellationToken)
         {
-            HashSet<string> existingCodes = _discountStorage.FetchExistingCodes();
-            IEnumerable<string> newCodes = new List<string>();
+            var buffer = new byte[1024 * 4];
 
-            int codesToGenerate = count - existingCodes.Count;
-            if (codesToGenerate > 0)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                newCodes = GenerateUniqueDiscountCodes(codesToGenerate, existingCodes);
-                _discountStorage.SaveNewCodes(newCodes);
-            }
+                WebSocketReceiveResult result;
+                ArraySegment<byte> segment = new ArraySegment<byte>(buffer);
 
-            return existingCodes.Take(count).Concat(newCodes).ToList();
-        }
-
-        internal IEnumerable<string> GenerateUniqueDiscountCodes(int count, HashSet<string> existingCodes)
-        {
-            HashSet<string> newCodes = new HashSet<string>();
-            Random random = new Random();
-
-            while (newCodes.Count < count)
-            {
-                int length = random.Next(7, 9); // Random length: 7 or 8 characters
-                string code = GenerateRandomCode(length, random);
-
-                if (!existingCodes.Contains(code) && newCodes.Add(code))
+                try
                 {
-                    existingCodes.Add(code);
+                    result = await webSocket.ReceiveAsync(segment, cancellationToken);
                 }
+                catch (Exception)
+                {
+                    break; // Jeśli wystąpi błąd, zamykamy połączenie
+                }
+
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Close", cancellationToken);
+                    break;
+                }
+
+                var incomingMessage = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                Console.WriteLine($"Received message: {incomingMessage}");
+
+                var request = JsonConvert.DeserializeObject<DiscountRequest>(incomingMessage);
+
+                var codes = await _discountCodeGenerator.GenerateDiscountCodesAsync(request.Count);
+
+                await _fileStorage.SaveDiscountCodesToFileAsync(codes);
+
+                var responseMessage = JsonConvert.SerializeObject(new { Codes = codes });
+                var responseBuffer = Encoding.UTF8.GetBytes(responseMessage);
+
+                await webSocket.SendAsync(new ArraySegment<byte>(responseBuffer), WebSocketMessageType.Text, true, cancellationToken);
             }
 
-            return newCodes.ToList();
-        }
-
-        private static string GenerateRandomCode(int length, Random random)
-        {
-            const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            char[] code = new char[length];
-            for (int i = 0; i < length; i++)
-            {
-                code[i] = chars[random.Next(chars.Length)];
-            }
-            return new string(code);
+            webSocket.Dispose();
         }
     }
 }

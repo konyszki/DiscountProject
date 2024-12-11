@@ -6,40 +6,38 @@ namespace DiscountServerTests.Unit
     public class DiscountCodeTests
     {
         [Fact]
-        public void GenerateUniqueDiscountCodes_ShouldReturnCorrectNumberOfCodes()
+        public async Task GenerateDiscountCodesAsync_ShouldGenerateUniqueCodes()
         {
             // Arrange
-            var discountStorage = Substitute.For<IDiscountStorage>();
-            discountStorage.FetchExistingCodes().Returns(new HashSet<string> { "ABC1234", "DEF5678" });
+            var fileStorage = Substitute.For<IFileDiscountStorage>();
+            fileStorage.ReadDiscountCodesFromFileAsync().Returns(new List<string>()); // Brak istniej¹cych kodów
 
-            var server = new WebSocketServer(discountStorage);
+            var generator = new DiscountCodeGenerator(fileStorage);
 
             // Act
-            var codes = server.GenerateUniqueDiscountCodes(5, new HashSet<string> { "ABC1234", "DEF5678" }).ToList();
+            var codes = await generator.GenerateDiscountCodesAsync(100);
 
             // Assert
-            Assert.NotNull(codes);
-            Assert.Equal(5, codes.Count);
-            Assert.DoesNotContain("ABC1234", codes);
-            Assert.DoesNotContain("DEF5678", codes);
+            Assert.Equal(100, codes.Count);
+            Assert.Equal(100, new HashSet<string>(codes).Count); // Unikalne kody
         }
 
         [Fact]
-        public void FetchOrGenerateDiscountCodes_ShouldReturnExistingAndNewCodes()
+        public async Task GenerateDiscountCodesAsync_ShouldNotDuplicateExistingCodes()
         {
             // Arrange
-            var existingCodes = new HashSet<string> { "ABC1234", "DEF5678" };
-            var discountStorage = Substitute.For<IDiscountStorage>();
-            discountStorage.FetchExistingCodes().Returns(existingCodes);
+            var existingCodes = new List<string> { "CODE123", "CODE456" };
+            var fileStorage = Substitute.For<IFileDiscountStorage>();
+            fileStorage.ReadDiscountCodesFromFileAsync().Returns(existingCodes);
 
-            var server = new WebSocketServer(discountStorage);
+            var generator = new DiscountCodeGenerator(fileStorage);
 
             // Act
-            var codes = server.FetchOrGenerateDiscountCodes(3).ToList();
+            var codes = await generator.GenerateDiscountCodesAsync(100);
 
             // Assert
-            Assert.NotNull(codes);
-            Assert.True(codes.Count >= 3);
+            Assert.DoesNotContain("CODE123", codes);
+            Assert.DoesNotContain("CODE456", codes);
         }
     }
 }

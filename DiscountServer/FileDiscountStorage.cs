@@ -6,49 +6,46 @@ using System.Threading.Tasks;
 
 namespace DiscountServer
 {
-    public interface IDiscountStorage
+    public interface IFileDiscountStorage
     {
-        HashSet<string> FetchExistingCodes();
-        void SaveNewCodes(IEnumerable<string> codes);
+        Task SaveDiscountCodesToFileAsync(List<string> codes);
+
+        Task<List<string>> ReadDiscountCodesFromFileAsync();
     }
-    class FileDiscountStorage : IDiscountStorage
+
+    internal class FileDiscountStorage : IFileDiscountStorage
     {
-        private readonly string _filePath;
+        private const string DiscountCodesFile = "discounts.txt";
 
-        public FileDiscountStorage(string filePath)
+        public async Task SaveDiscountCodesToFileAsync(List<string> codes)
         {
-            _filePath = filePath;
-
-            // Ensure the file exists
-            if (!File.Exists(_filePath))
-            {
-                using (File.Create(_filePath)) { }
-            }
-        }
-
-        public HashSet<string> FetchExistingCodes()
-        {
-            using (var reader = new StreamReader(_filePath))
-            {
-                var codes = new HashSet<string>();
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    codes.Add(line);
-                }
-                return codes;
-            }
-        }
-
-        public void SaveNewCodes(IEnumerable<string> codes)
-        {
-            using (var writer = new StreamWriter(_filePath, append: true))
+            // Zapisuje kody do pliku
+            using (StreamWriter writer = new StreamWriter(DiscountCodesFile, append: true))
             {
                 foreach (var code in codes)
                 {
-                    writer.WriteLine(code);
+                    await writer.WriteLineAsync(code);
                 }
             }
+        }
+
+        public async Task<List<string>> ReadDiscountCodesFromFileAsync()
+        {
+            var codes = new List<string>();
+
+            if (File.Exists(DiscountCodesFile))
+            {
+                using (StreamReader reader = new StreamReader(DiscountCodesFile))
+                {
+                    string line;
+                    while ((line = await reader.ReadLineAsync()) != null)
+                    {
+                        codes.Add(line);
+                    }
+                }
+            }
+
+            return codes;
         }
     }
 }
